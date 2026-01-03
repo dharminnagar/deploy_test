@@ -1,15 +1,12 @@
-# Use official Node.js LTS image
-FROM node:20-alpine AS base
+FROM oven/bun:latest AS base
 
 # Install dependencies only when needed
 FROM base AS deps
-# Check https://github.com/nodejs/docker-node/tree/b4117f9333da4138b03a546ec926ef50a31506c3#nodealpine to understand why libc6-compat might be needed.
-RUN apk add --no-cache libc6-compat
 WORKDIR /app
 
-# Install dependencies based on the preferred package manager
+# Install dependencies (need all deps including devDependencies for build)
 COPY package.json package-lock.json* ./
-RUN npm ci
+RUN bun install --frozen-lockfile
 
 # Rebuild the source code only when needed
 FROM base AS builder
@@ -21,7 +18,7 @@ COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Build the Next.js application
-RUN npm run build
+RUN bun run build
 
 # Production image, copy all the files and run next
 FROM base AS runner
@@ -30,8 +27,8 @@ WORKDIR /app
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN addgroup --system --gid 1001 nodejs
-RUN adduser --system --uid 1001 nextjs
+RUN groupadd --gid 1001 nodejs
+RUN useradd --uid 1001 --gid nodejs --shell /bin/bash --create-home nextjs
 
 # Copy necessary files for running the app
 COPY --from=builder /app/public ./public
@@ -52,6 +49,5 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# server.js is created by next build from the standalone output
-# https://nextjs.org/docs/pages/api-reference/next-config-js/output
-CMD ["node", "server.js"]
+# Run the standalone server with bun
+CMD ["bun", "server.js"]
